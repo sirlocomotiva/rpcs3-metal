@@ -1,3 +1,49 @@
+RPCS3 Metal
+===========
+
+[![macOS build](https://img.shields.io/github/actions/workflow/status/sirlocomotiva/rpcs3-metal/metal-mac.yml?branch=metal-renderer&logo=github&label=macOS%20build)](https://github.com/sirlocomotiva/rpcs3-metal/actions/workflows/metal-mac.yml)
+[![Latest release](https://img.shields.io/github/v/release/sirlocomotiva/rpcs3-metal?label=download)](https://github.com/sirlocomotiva/rpcs3-metal/releases/latest)
+
+An unofficial fork of [RPCS3](https://github.com/RPCS3/rpcs3), the open-source PlayStation 3 emulator, that adds a native Metal renderer for macOS.
+
+On macOS, RPCS3 renders with Vulkan through MoltenVK, which translates Vulkan calls to Metal. This fork adds a third renderer next to Vulkan and OpenGL. It drives Metal directly and uses Apple features such as MetalFX upscaling, pipeline binary archives, framebuffer fetch and unified memory. The goal is to help people who only have a Mac get better performance out of their games.
+
+All credit for the emulator goes to the RPCS3 team and its contributors. This fork only adds a renderer on top of their work, and it is not affiliated with or endorsed by them. **Please don't report problems with this build to the RPCS3 team.** Open an issue [in this repository](https://github.com/sirlocomotiva/rpcs3-metal/issues) instead, and mention that you use the Metal renderer. To support RPCS3 itself, see their [Patreon](https://rpcs3.net/patreon).
+
+## Download
+
+Get the latest build from [Releases](https://github.com/sirlocomotiva/rpcs3-metal/releases/latest). It needs an Apple Silicon Mac with macOS 15 or newer.
+
+1. Open the DMG and drag **RPCS3 Metal** to Applications. Its name differs from the official app, so both can be installed side by side. They share settings, firmware, games and caches.
+2. The app is not notarized, so macOS blocks the first launch. Go to System Settings → Privacy & Security and click **Open Anyway**, or run:
+   ```bash
+   xattr -dr com.apple.quarantine "/Applications/RPCS3 Metal.app"
+   ```
+3. Each time it starts, RPCS3 shows an *Experimental Build Warning*, because this is not an official release. Click **Yes** to continue.
+4. Select the renderer in *Configuration → GPU → Renderer → Metal*, globally or per game.
+
+Set up firmware and games as described in the official [quickstart](https://rpcs3.net/quickstart). Don't use *Check for Updates* in this build: it would replace it with the official RPCS3, which has no Metal renderer.
+
+Every push to the [`metal-renderer`](https://github.com/sirlocomotiva/rpcs3-metal/tree/metal-renderer) branch is built by GitHub Actions ([metal-mac.yml](.github/workflows/metal-mac.yml)) and published as a release.
+
+## Status
+
+The Metal renderer is new, and so far it has mostly been tested with Grand Theft Auto IV. Other games may render incorrectly or not at all. If one does, switch that game back to Vulkan in its custom configuration, and please open an issue.
+
+In progress:
+* Shader interpreter. The interpreter modes currently fall back to asynchronous shader compilation.
+* MetalFX temporal upscaling.
+
+Design notes, build instructions, debugging switches and known limitations are in [rpcs3/Emu/RSX/Metal/README.md](rpcs3/Emu/RSX/Metal/README.md).
+
+## How it was made
+
+The Metal renderer was developed with the help of an AI coding assistant (Claude, by Anthropic) and tested in games on real hardware. Nothing from this fork has been submitted to RPCS3. Any future submission would follow their [AI use policy](#ai-use).
+
+---
+
+The rest of this page is the upstream RPCS3 README.
+
 RPCS3
 =====
 

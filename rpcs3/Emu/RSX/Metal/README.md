@@ -5,6 +5,30 @@ program cache, draw/flip flow) mirrors `VK/`, and the Vulkan-specific layers (de
 barriers, swapchain) are replaced by their Metal equivalents.
 
 Select it with *Configuration → GPU → Renderer → Metal*, or `Renderer: Metal` under `Video:` in a custom config.
+Prebuilt Apple Silicon builds are on the [releases page](https://github.com/sirlocomotiva/rpcs3-metal/releases/latest).
+
+## Building
+
+`USE_METAL` is on by default on macOS. Building needs the macOS 26 SDK (Xcode 26) or newer. The app runs on macOS 15
+or newer, and uses features of later releases when the running system has them. SPIRV-Cross is fetched at configure
+time when no system copy is found.
+
+Release builds come from [`metal-mac.yml`](../../../../.github/workflows/metal-mac.yml), which runs RPCS3's macOS CI
+script (`.ci/build-mac.sh`) with MacPorts dependencies. Development builds use Homebrew:
+
+```bash
+brew install cmake ninja llvm@22 qt sdl3 molten-vk vulkan-headers vulkan-loader
+git clone --recurse-submodules -b metal-renderer https://github.com/sirlocomotiva/rpcs3-metal.git
+cd rpcs3-metal
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_PREFIX_PATH="$(brew --prefix llvm@22);$(brew --prefix qt)" \
+    -DLLVM_DIR="$(brew --prefix llvm@22)/lib/cmake/llvm" \
+    -DSTATIC_LINK_LLVM=ON -DUSE_SYSTEM_MVK=ON -DUSE_SYSTEM_OPENCV=OFF \
+    -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
+cmake --build build
+```
+
+The app is written to `build/bin/rpcs3.app`.
 
 ## Layout
 

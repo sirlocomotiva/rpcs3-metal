@@ -1,0 +1,219 @@
+name: Build RPCS3 Metal (macOS)
+
+# Builds the metal-renderer branch for Apple Silicon Macs and publishes the app as a GitHub release.
+# Pull requests are built without a release. Upstream CI stays in rpcs3.yml; this workflow never runs on RPCS3/rpcs3.
+
+defaults:
+  run:
+    shell: bash
+on:
+  push:
+    branches:
+      - metal-renderer
+    paths-ignore:
+      - '**.md'
+  pull_request:
+    branches:
+      - metal-renderer
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+
+env:
+  BUILD_REPOSITORY_NAME: ${{ github.repository }}
+  BUILD_SOURCEBRANCHNAME: ${{ github.ref_name }}
+  BUILD_SOURCEVERSION: ${{ github.sha }}
+  BUILD_ARTIFACTSTAGINGDIRECTORY: ${{ github.workspace }}/artifacts/
+
+jobs:
+  Mac_Metal_Build:
+    name: RPCS3 Metal Mac Apple Silicon
+    if: github.repository != 'RPCS3/rpcs3'
+    runs-on: macos-15
+    # A newer push cancels this build, but never a release that is being published
+    concurrency:
+      group: ${{ github.workflow }}-build-${{ github.ref }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.package.outputs.version }}
+      name: ${{ steps.package.outputs.name }}
+    env:
+      CCACHE_DIR: /tmp/ccache_dir
+      QT_VER: '6.12.0'
+      QT_VER_MAIN: '6'
+      LLVM_COMPILER_VER: '22'
+      RELEASE_MESSAGE: ../GitHubReleaseMessage.txt
+      RUN_UNIT_TESTS: 'OFF'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@main
+        with:
+          fetch-depth: 0
+
+      - name: Setup MacPorts
+        uses: melusina-org/setup-macports@v1
+        with:
+            cache: 'disable'
+
+      - name: Restore Build Ccache
+        uses: actions/cache/restore@main
+        id: restore-build-ccache
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ runner.os }}-metal-ccache-${{ github.run_id }}
+          restore-keys: ${{ runner.os }}-metal-ccache-
+
+      - name: Restore Qt Cache
+        uses: actions/cache/restore@main
+        id: restore-qt-cache
+        with:
+          path: /tmp/Qt
+          key: ${{ runner.os }}-metal-qt-${{ env.QT_VER }}
+
+      - name: Select Xcode 26 or newer
+        # The Metal backend calls macOS 26 APIs behind @available checks, so it needs the macOS 26 SDK
+        run: |
+          sdk_major=$(xcrun --sdk macosx --show-sdk-version | cut -d. -f1)
+          if [ "$sdk_major" -lt 26 ]; then
+            xcode=$(ls -d /Applications/Xcode_2[6-9]*.app 2>/dev/null | grep -iv beta | sort -V | tail -n 1 || true)
+            if [ -z "$xcode" ]; then
+              echo "No Xcode 26 or newer on this runner:"
+              ls -d /Applications/Xcode*.app
+              exit 1
+            fi
+            sudo xcode-select -switch "$xcode/Contents/Developer"
+          fi
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-path
+
+      - name: Build
+        run: |
+          mkdir -p "$BUILD_ARTIFACTSTAGINGDIRECTORY"
+          .ci/build-mac.sh
+
+      - name: Check Qt download
+        id: qt
+        if: ${{ !cancelled() }}
+        # build-mac.sh copies Qt into the workspace only once the download has finished
+        run: |
+          if [ -d "qt-downloader/$QT_VER" ]; then
+            echo "complete=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Save Build Ccache
+        if: ${{ !cancelled() }}
+        uses: actions/cache/save@main
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.restore-build-ccache.outputs.cache-primary-key }}
+
+      - name: Save Qt Cache
+        if: ${{ !cancelled() && steps.restore-qt-cache.outputs.cache-hit != 'true' && steps.qt.outputs.complete == 'true' }}
+        uses: actions/cache/save@main
+        with:
+          path: /tmp/Qt
+          key: ${{ steps.restore-qt-cache.outputs.cache-primary-key }}
+
+      - name: Package DMG
+        id: package
+        run: |
+          # USE_METAL is turned off with only a warning when SPIRV-Cross is missing
+          if ! otool -L build/bin/RPCS3.app/Contents/MacOS/rpcs3 | grep -q MetalFX.framework; then
+            echo "::error::rpcs3 was built without the Metal renderer"
+            exit 1
+          fi
+
+          source .ci/ci-vars.env
+          version="${AVVER}-$(git rev-parse --short=8 HEAD)"
+          name="rpcs3-metal-v${version}_macos_arm64"
+
+          # A different bundle name than the official RPCS3.app, so both can live in /Applications
+          staging="$RUNNER_TEMP/dmg"
+          mkdir -p "$staging"
+          ditto build/bin/RPCS3.app "$staging/RPCS3 Metal.app"
+          ln -s /Applications "$staging/Applications"
+
+          # The DMG replaces the upstream 7z archive
+          rm -f "$BUILD_ARTIFACTSTAGINGDIRECTORY"/*.7z
+
+          # hdiutil sometimes fails with "Resource busy" on hosted runners
+          for attempt in 1 2 3; do
+            hdiutil create -volname "RPCS3 Metal" -srcfolder "$staging" -format ULMO -ov "$BUILD_ARTIFACTSTAGINGDIRECTORY/$name.dmg" && break
+            [ "$attempt" -lt 3 ] || exit 1
+            sleep 15
+          done
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@main
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: ${{ env.BUILD_ARTIFACTSTAGINGDIRECTORY }}
+          compression-level: 0
+          overwrite: true
+
+  # Separate from the build, so a failed publish can be re-run without rebuilding
+  Publish_Release:
+    name: Publish GitHub release
+    needs: Mac_Metal_Build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/metal-renderer'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-publish
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@main
+
+      - name: Download artifacts
+        uses: actions/download-artifact@main
+        with:
+          name: ${{ needs.Mac_Metal_Build.outputs.name }}
+          path: artifacts
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.Mac_Metal_Build.outputs.version }}
+        run: |
+          tag="metal-v${VERSION}"
+          dmg=$(ls artifacts/*.dmg)
+          export SUBJECT SHA256
+          SUBJECT=$(git log -1 --format=%s)
+          SHA256=$(sha256sum "$dmg" | awk '{ print $1 }')
+
+          cat > "$RUNNER_TEMP/notes.md" <<'EOF'
+          Build of `@BRANCH@` at @COMMIT@: @SUBJECT@
+
+          An unofficial build of RPCS3 with a native Metal renderer, not affiliated with the RPCS3 team. Please report problems with it in this repository, not to RPCS3.
+
+          **Install:** open the DMG and drag **RPCS3 Metal** to Applications. Its name differs from the official RPCS3, so both can be installed side by side. They share the same settings, games and caches.
+
+          **First launch:** the app is ad-hoc signed and not notarized, so macOS blocks it the first time. Go to System Settings → Privacy & Security and click **Open Anyway**, or run:
+
+              xattr -dr com.apple.quarantine "/Applications/RPCS3 Metal.app"
+
+          Each time it starts, RPCS3 shows an *Experimental Build Warning*, because this is not an official release. Click **Yes** to continue.
+
+          **Use Metal:** *Configuration → GPU → Renderer → Metal*, globally or per game.
+
+          Requires an Apple Silicon Mac with macOS 15 or newer. Don't use Check for Updates in this build: it would replace it with the official RPCS3, which has no Metal renderer.
+
+          SHA-256 of the DMG: `@SHA256@`
+          EOF
+          perl -pi -e 's/\@BRANCH\@/$ENV{GITHUB_REF_NAME}/g; s/\@COMMIT\@/$ENV{GITHUB_SHA}/g; s/\@SUBJECT\@/$ENV{SUBJECT}/g; s/\@SHA256\@/$ENV{SHA256}/g' "$RUNNER_TEMP/notes.md"
+
+          if gh release view "$tag" > /dev/null 2>&1; then
+            # A re-run produces a new DMG, so its checksum in the notes changes too
+            gh release upload "$tag" "$dmg" --clobber
+            gh release edit "$tag" --notes-file "$RUNNER_TEMP/notes.md"
+          else
+            gh release create "$tag" "$dmg" --target "$GITHUB_SHA" --title "RPCS3 Metal ${VERSION}" --notes-file "$RUNNER_TEMP/notes.md" --latest
+          fi
