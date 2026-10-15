@@ -620,8 +620,21 @@ namespace rsx
 
 					if (new_area.x2 <= old_area.x2 && new_area.y2 <= old_area.y2)
 					{
-						do_intersection_test = false;
-						new_surface->set_old_contents(old_surface);
+						if (new_surface->old_contents.empty()) [[likely]]
+						{
+							do_intersection_test = false;
+							new_surface->set_old_contents(old_surface);
+						}
+						else
+						{
+							// The surface still holds unresolved inherited data, e.g. a persisted surface whose draws were all
+							// skipped since it was last bound. The intersection test appends old_surface after that data.
+							rsx_log.warning("[SURFACE CACHE] %s surface at 0x%x (%s, %ux%u) still has %u pending section(s) from 0x%x when inheriting from 0x%x (%s)",
+								store ? "Reused" : "Persisted", address, depth ? "depth" : "color",
+								new_surface->get_surface_width(), new_surface->get_surface_height(), new_surface->old_contents.size(),
+								static_cast<surface_type>(new_surface->old_contents.front().source)->base_addr,
+								old_surface->base_addr, old_surface->is_depth_surface() ? "depth" : "color");
+						}
 					}
 				}
 			}
