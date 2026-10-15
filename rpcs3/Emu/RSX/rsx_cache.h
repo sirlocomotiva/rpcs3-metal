@@ -274,7 +274,7 @@ namespace rsx
 
 			// Preload everything needed to compile the shaders
 			unpacked_type unpacked;
-			uint nb_workers = g_cfg.video.renderer == video_renderer::vulkan ? utils::get_thread_count() : 1;
+			uint nb_workers = (g_cfg.video.renderer == video_renderer::vulkan || g_cfg.video.renderer == video_renderer::metal) ? utils::get_thread_count() : 1;
 
 			load_shaders(nb_workers, unpacked, directory_path, entries, entry_count, dlg);
 

@@ -95,6 +95,7 @@ namespace rsx
 		bool supports_programmable_blending;     // Can handle programmable blending requests
 		bool supports_extended_depth_range;      // Depth values above 1 can be stored and tested. Float depth targets are emulated otherwise.
 		bool supports_framebufferless_rendering; // Can rasterize without any attachments bound (e.g for occlusion queries)
+		bool emulate_depth_bounds_test;          // No host depth bounds test. The fragment shader reads the Z buffer and performs the test.
 	};
 
 	struct desync_fifo_cmd_info

@@ -84,13 +84,20 @@ render_creator::render_creator()
 	// Graphics Adapter
 	Vulkan = render_info(vulkan_adapters, supports_vulkan, emu_settings_type::VulkanAdapter);
 	OpenGL = render_info();
+	Metal = render_info();
 	NullRender = render_info();
 
 #ifdef __APPLE__
 	OpenGL.supported = false;
 #endif
 
-	renderers = { &Vulkan, &OpenGL, &NullRender };
+#if defined(HAVE_METAL)
+	Metal.supported = true;
+#else
+	Metal.supported = false;
+#endif
+
+	renderers = { &Vulkan, &OpenGL, &Metal, &NullRender };
 }
 
 void render_creator::update_names(const QStringList& names)

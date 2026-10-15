@@ -205,6 +205,56 @@ if(USE_VULKAN)
 	endif()
 endif()
 
+# Metal (native macOS renderer)
+set(METAL_TARGET 3rdparty_dummy_lib)
+if(APPLE AND USE_METAL)
+	# SPIRV-Cross is used to translate the SPIR-V produced by glslang into MSL
+	find_package(spirv_cross_core CONFIG QUIET)
+	find_package(spirv_cross_glsl CONFIG QUIET)
+	find_package(spirv_cross_msl CONFIG QUIET)
+
+	if(NOT TARGET spirv-cross-msl)
+		message(STATUS "RPCS3: System SPIRV-Cross not found, fetching it")
+		include(FetchContent)
+		set(SPIRV_CROSS_CLI OFF CACHE BOOL "" FORCE)
+		set(SPIRV_CROSS_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+		set(SPIRV_CROSS_ENABLE_HLSL OFF CACHE BOOL "" FORCE)
+		set(SPIRV_CROSS_ENABLE_CPP OFF CACHE BOOL "" FORCE)
+		set(SPIRV_CROSS_ENABLE_REFLECT OFF CACHE BOOL "" FORCE)
+		set(SPIRV_CROSS_ENABLE_C_API OFF CACHE BOOL "" FORCE)
+		set(SPIRV_CROSS_ENABLE_UTIL OFF CACHE BOOL "" FORCE)
+		set(SPIRV_CROSS_SHARED OFF CACHE BOOL "" FORCE)
+		set(SPIRV_CROSS_STATIC ON CACHE BOOL "" FORCE)
+		set(SPIRV_CROSS_SKIP_INSTALL ON CACHE BOOL "" FORCE)
+		FetchContent_Declare(spirv_cross
+			GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Cross.git
+			GIT_TAG vulkan-sdk-1.4.321.0
+			GIT_SHALLOW TRUE
+		)
+		FetchContent_MakeAvailable(spirv_cross)
+
+		# SPIRV-Cross reports errors with exceptions; RPCS3 builds with -fno-exceptions globally
+		foreach(_spvc_target spirv-cross-core spirv-cross-glsl spirv-cross-msl)
+			if(TARGET ${_spvc_target})
+				target_compile_options(${_spvc_target} PRIVATE -fexceptions)
+			endif()
+		endforeach()
+	else()
+		message(STATUS "RPCS3: Using system SPIRV-Cross")
+	endif()
+
+	if(TARGET spirv-cross-msl)
+		add_library(3rdparty_metal INTERFACE)
+		target_compile_definitions(3rdparty_metal INTERFACE -DHAVE_METAL)
+		target_link_libraries(3rdparty_metal INTERFACE
+			spirv-cross-msl spirv-cross-glsl spirv-cross-core
+			"-framework Metal" "-framework MetalFX" "-framework QuartzCore" "-framework Foundation" "-framework AppKit")
+		set(METAL_TARGET 3rdparty_metal)
+	else()
+		message(WARNING "USE_METAL was enabled, but SPIRV-Cross could not be found. RPCS3 will be compiled without Metal support.")
+	endif()
+endif()
+
 # AsmJit
 add_subdirectory(asmjit EXCLUDE_FROM_ALL)
 
@@ -374,6 +424,7 @@ add_library(3rdparty::discordRPC ALIAS 3rdparty_discordRPC)
 add_library(3rdparty::faudio ALIAS ${FAUDIO_TARGET})
 add_library(3rdparty::libevdev ALIAS ${LIBEVDEV_TARGET})
 add_library(3rdparty::vulkan ALIAS ${VULKAN_TARGET})
+add_library(3rdparty::metal ALIAS ${METAL_TARGET})
 add_library(3rdparty::openal ALIAS 3rdparty_openal)
 add_library(3rdparty::ffmpeg ALIAS 3rdparty_ffmpeg)
 add_library(3rdparty::glew ALIAS 3rdparty_glew)

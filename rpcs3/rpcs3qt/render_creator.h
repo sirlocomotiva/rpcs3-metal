@@ -35,6 +35,7 @@ public:
 	QStringList vulkan_adapters;
 	render_info Vulkan;
 	render_info OpenGL;
+	render_info Metal;
 	render_info NullRender;
 	std::vector<render_info*> renderers;
 };

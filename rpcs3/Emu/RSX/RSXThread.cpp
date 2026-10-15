@@ -126,6 +126,7 @@ namespace rsx
 
 	constexpr u32 fs_export_config_mask =
 		RSX_SHADER_CONTROL_EMULATE_DEPTH_COMPARE |
+		RSX_SHADER_CONTROL_EMULATE_DEPTH_BOUNDS |
 		RSX_SHADER_CONTROL_ROP_MULTISAMPLED |
 		RSX_SHADER_CONTROL_PROGRAMMABLE_BLENDING |
 		RSX_SHADER_CONTROL_EMULATE_DEPTH_RANGE;
@@ -855,7 +856,7 @@ namespace rsx
 
 		m_draw_processor.init(m_ctx);
 
-		if (g_cfg.misc.use_native_interface && (g_cfg.video.renderer == video_renderer::opengl || g_cfg.video.renderer == video_renderer::vulkan))
+		if (g_cfg.misc.use_native_interface && (g_cfg.video.renderer == video_renderer::opengl || g_cfg.video.renderer == video_renderer::vulkan || g_cfg.video.renderer == video_renderer::metal))
 		{
 			m_overlay_manager = g_fxo->init<rsx::overlays::display_manager>(0);
 
@@ -2186,6 +2187,24 @@ namespace rsx
 			expected_ctrl |= RSX_SHADER_CONTROL_EMULATE_DEPTH_RANGE;
 		}
 
+		// Depth bounds test in the fragment shader. The test does not depend on the depth test. Layout setup keeps the Z buffer
+		// bound while the test is active, and the Metal backend rebuilds a layout that dropped it before the test was enabled.
+		// Bounds covering [0, 1] always pass unless float depth is stored with the extended range encoding.
+		if (backend_config.emulate_depth_bounds_test &&
+			m_framebuffer_layout.zeta_address &&
+			REGS(m_ctx)->depth_bounds_test_enabled() &&
+			(REGS(m_ctx)->depth_bounds_min() > 0.f || REGS(m_ctx)->depth_bounds_max() < 1.f || requires_depth_range_emulation())) [[ unlikely ]]
+		{
+			expected_ctrl |= RSX_SHADER_CONTROL_EMULATE_DEPTH_BOUNDS;
+
+			// The Z buffer is read per sample
+			if (REGS(m_ctx)->surface_antialias() != rsx::surface_antialiasing::center_1_sample &&
+				backend_config.supports_hw_msaa)
+			{
+				expected_ctrl |= RSX_SHADER_CONTROL_ROP_MULTISAMPLED;
+			}
+		}
+
 		// Depth compare
 		if (!g_cfg.video.emulate_depth_compare) [[ likely ]]
 		{
@@ -2616,7 +2635,7 @@ namespace rsx
 				{
 					m_graphics_state |= rsx::zeta_address_is_cyclic;
 
-					if (!(current_fragment_program.ctrl & (CELL_GCM_SHADER_CONTROL_DEPTH_EXPORT | RSX_SHADER_CONTROL_META_USES_DISCARD | RSX_SHADER_CONTROL_EMULATE_DEPTH_COMPARE)) &&
+					if (!(current_fragment_program.ctrl & (CELL_GCM_SHADER_CONTROL_DEPTH_EXPORT | RSX_SHADER_CONTROL_META_USES_DISCARD | RSX_SHADER_CONTROL_EMULATE_DEPTH_COMPARE | RSX_SHADER_CONTROL_EMULATE_DEPTH_BOUNDS)) &&
 						m_framebuffer_layout.zeta_write_enabled)
 					{
 						current_fragment_program.ctrl |= RSX_SHADER_CONTROL_DISABLE_EARLY_Z;

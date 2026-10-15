@@ -683,6 +683,23 @@ if(TARGET 3rdparty_vulkan)
     endif()
 endif()
 
+if(TARGET 3rdparty_metal)
+    # Native Metal backend (Objective-C++ with ARC)
+    file(GLOB_RECURSE RPCS3_METAL_SOURCES CONFIGURE_DEPENDS
+        ${CMAKE_CURRENT_SOURCE_DIR}/RSX/Metal/*.mm
+    )
+    target_sources(rpcs3_emu PRIVATE ${RPCS3_METAL_SOURCES})
+    # ObjC exceptions are disabled so that __EXCEPTIONS matches the C++ sources (-fno-exceptions)
+    set_source_files_properties(${RPCS3_METAL_SOURCES} PROPERTIES
+        COMPILE_OPTIONS "-fobjc-arc;-fno-objc-exceptions"
+        SKIP_PRECOMPILE_HEADERS ON
+    )
+    # SPIRV-Cross reports errors with C++ exceptions, the shader compiler catches them
+    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/RSX/Metal/mtlutils/shader.mm PROPERTIES
+        COMPILE_OPTIONS "-fobjc-arc;-fno-objc-exceptions;-fexceptions"
+    )
+endif()
+
 if(NOT WIN32)
     set(THREADS_PREFER_PTHREAD_FLAG ON)
 endif()
@@ -697,6 +714,7 @@ target_link_libraries(rpcs3_emu
         3rdparty::opengl
         3rdparty::stblib
         3rdparty::vulkan
+        3rdparty::metal
         3rdparty::glew
         3rdparty::libusb
         3rdparty::hidapi

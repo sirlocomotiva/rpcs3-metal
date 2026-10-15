@@ -84,10 +84,20 @@ main_application::main_application()
 
 		supported_renderers.insert(video_renderer::vulkan);
 	}
+	else if (m_render_creator->Metal.supported)
+	{
+		cfg_log.notice("Setting the default renderer to Metal");
+		Emu.SetDefaultRenderer(video_renderer::metal);
+	}
 	else if (m_render_creator->OpenGL.supported)
 	{
 		cfg_log.notice("Setting the default renderer to OpenGl");
 		Emu.SetDefaultRenderer(video_renderer::opengl);
+	}
+
+	if (m_render_creator->Metal.supported)
+	{
+		supported_renderers.insert(video_renderer::metal);
 	}
 
 	Emu.SetSupportedRenderers(supported_renderers);

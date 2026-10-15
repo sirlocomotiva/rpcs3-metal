@@ -65,6 +65,10 @@
 #include "Emu/RSX/VK/VKGSRender.h"
 #endif
 
+#if defined(HAVE_METAL)
+#include "Emu/RSX/Metal/MTLRenderer.h"
+#endif
+
 #ifdef _WIN32
 #include <Usbiodef.h>
 #include <Dbt.h>
@@ -248,7 +252,7 @@ int gui_application::exec()
 		}
 
 #ifdef __APPLE__
-		if (!m_render_creator->Vulkan.supported)
+		if (!m_render_creator->Vulkan.supported && !m_render_creator->Metal.supported)
 		{
 			QMessageBox::warning(nullptr,
 									tr("Warning"),
@@ -718,6 +722,7 @@ std::unique_ptr<gs_frame> gui_application::get_gs_frame()
 	}
 	case video_renderer::null:
 	case video_renderer::vulkan:
+	case video_renderer::metal:
 	{
 		frame = new gs_frame(screen, frame_geometry, app_icon, m_gui_settings, m_start_games_fullscreen);
 		break;
@@ -804,6 +809,13 @@ void gui_application::create_callbacks()
 		{
 #if defined(HAVE_VULKAN)
 			g_fxo->init<rsx::thread, named_thread<VKGSRender>>(ar);
+#endif
+			break;
+		}
+		case video_renderer::metal:
+		{
+#if defined(HAVE_METAL)
+			mtl::create_renderer(ar);
 #endif
 			break;
 		}
